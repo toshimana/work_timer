@@ -43,13 +43,17 @@ where H: std::hash::Hasher {
 pub enum Message {
     Start,
     Stop,
+    AlertStop,
     Reset,
     Update,
+    OneMinute,
+    TenMinute,
 }
 
 pub enum TickState {
     Stopped,
     Ticking,
+    Alert,
 }
 
 struct GUI {
@@ -58,6 +62,8 @@ struct GUI {
     tick_state: TickState,
     start_stop_button_state: button::State,
     reset_button_state: button::State,
+    one_minute_button_state: button::State,
+    ten_minute_button_state: button::State,
 }
 
 impl Application for GUI {
@@ -71,13 +77,15 @@ impl Application for GUI {
             total_duration: Duration::default(),
             tick_state: TickState::Stopped,
             start_stop_button_state: button::State::new(),
-            reset_button_state: button::State::new()
+            reset_button_state: button::State::new(),
+            one_minute_button_state: button::State::new(),
+            ten_minute_button_state: button::State::new(),
         },
         Command::none())
     }
 
     fn title(&self) -> String {
-        String::from("DEMO")
+        String::from("WorkTimer")
     }
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
@@ -88,19 +96,50 @@ impl Application for GUI {
             }
             Message::Stop => {
                 self.tick_state = TickState::Stopped;
-                self.total_duration += Instant::now() - self.last_update;
+
+                let now_update = Instant::now();
+                let diff_duration = now_update - self.last_update;
+                let is_time_out = self.total_duration <= diff_duration;
+                self.total_duration = if is_time_out {
+                    Duration::default()
+                } else {
+                    self.total_duration - diff_duration
+                };
             }
-            Message::Reset => {
+            Message::AlertStop => {
+                self.tick_state = TickState::Stopped;
                 self.last_update = Instant::now();
-                self.total_duration = Duration::default();
+            }
+            Message::Reset => match self.tick_state {
+                TickState::Stopped => {
+                    self.last_update = Instant::now();
+                    self.total_duration = Duration::default();
+                }
+                _ => {}
             }
             Message::Update => match self.tick_state {
                 TickState::Ticking => {
                     let now_update = Instant::now();
-                    self.total_duration += now_update - self.last_update;
+                    let diff_duration = now_update - self.last_update;
+                    let is_time_out = self.total_duration <= diff_duration;
+                    self.total_duration = if is_time_out {
+                        Duration::default()
+                    } else {
+                        self.total_duration - diff_duration
+                    };
                     self.last_update = now_update;
+                    if is_time_out {
+                        self.tick_state = TickState::Alert;
+                    }
+
                 }
                 _ => {}
+            }
+            Message::OneMinute => {
+                self.total_duration += Duration::from_secs(1);
+            }
+            Message::TenMinute => {
+                self.total_duration += Duration::from_secs(10);
             }
         }
         Command::none()
@@ -108,6 +147,7 @@ impl Application for GUI {
 
     fn view(&mut self) -> Element<Self::Message> {
         let seconds = self.total_duration.as_secs();
+
         let duration_text = format!(
             "{:0>2}:{:0>2}:{:0>2}.{:0>2}",
             seconds / HOUR,
@@ -115,25 +155,27 @@ impl Application for GUI {
             seconds % MINUTE,
             self.total_duration.subsec_millis() / 10
         );
-
-        let start_stop_text = match self.tick_state {
-            TickState::Stopped => Text::new("Start")
-                .horizontal_alignment(HorizontalAlignment::Center)
-                .font(FONT),
-            TickState::Ticking => Text::new("Stop")
-                .horizontal_alignment(HorizontalAlignment::Center)
-                .font(FONT)
+        let start_stop_string = match self.tick_state {
+            TickState::Stopped => "Start",
+            TickState::Ticking => "Stop",
+            TickState::Alert => "Alert",
         };
+        let start_stop_text = Text::new(start_stop_string)
+                .horizontal_alignment(HorizontalAlignment::Center)
+                .font(FONT);
         let start_stop_message = match self.tick_state {
             TickState::Stopped => Message::Start,
             TickState::Ticking => Message::Stop,
+            TickState::Alert => Message::AlertStop,
         };
 
         let tick_text = Text::new(duration_text).font(FONT).size(60);
+
         let start_stop_button = Button::new(&mut self.start_stop_button_state, start_stop_text)
             .min_width(80)
             .on_press(start_stop_message);
-        let reset_button = Button::new(
+
+            let reset_button = Button::new(
             &mut self.reset_button_state,
             Text::new("Reset")
                 .horizontal_alignment(HorizontalAlignment::Center)
@@ -142,10 +184,30 @@ impl Application for GUI {
             .min_width(80)
             .on_press(Message::Reset);
 
+        let one_minute_button = Button::new(
+            &mut self.one_minute_button_state,
+             Text::new("1m.")
+                .horizontal_alignment(HorizontalAlignment::Center)
+                .font(FONT)
+        )
+            .min_width(40)
+            .on_press(Message::OneMinute);
+
+            let ten_minute_button = Button::new(
+                &mut self.ten_minute_button_state,
+                 Text::new("10m.")
+                    .horizontal_alignment(HorizontalAlignment::Center)
+                    .font(FONT)
+            )
+            .min_width(40)
+            .on_press(Message::TenMinute);
+
         Column::new()
             .push(tick_text)
             .push(
                 Row::new()
+                    .push(one_minute_button)
+                    .push(ten_minute_button)
                     .push(start_stop_button)
                     .push(reset_button)
                     .spacing(10),
