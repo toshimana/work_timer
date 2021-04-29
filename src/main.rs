@@ -1,6 +1,6 @@
 use std::time::Duration;
 use std::time::Instant;
-use iced::{button, executor, futures, Align, Application, Button, Column, Command, Element, Font, HorizontalAlignment, Length, Row, Settings, Subscription, Text};
+use iced::{button, executor, futures, Align, Application, Button, Column, Command, Clipboard, Element, Font, HorizontalAlignment, Length, Row, Settings, Subscription, Text};
 
 const FPS: u64 = 30;
 const MILLISEC: u64 = 1000;
@@ -88,7 +88,7 @@ impl Application for GUI {
         String::from("WorkTimer")
     }
 
-    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+    fn update(&mut self, message: Self::Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
         match message {
             Message::Start => {
                 self.tick_state = TickState::Ticking;
@@ -228,5 +228,5 @@ impl Application for GUI {
 fn main() {
     let mut settings = Settings::default();
     settings.window.size = (400u32, 120u32);
-    GUI::run(settings);
+    let _result = GUI::run(settings);
 }
