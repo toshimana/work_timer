@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use std::fs::File;
 use std::sync::mpsc;
 use std::io::BufReader;
@@ -16,12 +18,10 @@ const FONT: Font = Font::External{
     bytes: include_bytes!("../rsc/PixelMplus12-Regular.ttf"),
 };
 
-
 enum MusicPlayerMessage {
-    Quit,
     Initialize(String),
     Play,
-    Stop,
+    Pause,
 }
 
 enum MusicPlayerState {
@@ -45,23 +45,19 @@ impl MusicPlayer {
         }
     }
     pub fn run(&mut self, rx : mpsc::Receiver<MusicPlayerMessage>) {
-        let mut loop_flag = true;
-        while loop_flag {
+        loop {
             let ret = rx.recv_timeout(Duration::from_millis(10));
             match ret {
                 Ok(msg) => {
                     match msg {
-                        MusicPlayerMessage::Quit => {
-                            loop_flag = false
-                        }
                         MusicPlayerMessage::Initialize(path) => {
                             self.initialize(path)
                         }
                         MusicPlayerMessage::Play => {
                             self.play()
                         }
-                        MusicPlayerMessage::Stop => {
-                            self.stop()
+                        MusicPlayerMessage::Pause => {
+                            self.pause()
                         }
                     }
                 }
@@ -78,6 +74,7 @@ impl MusicPlayer {
             let file = BufReader::new(File::open(path).unwrap());
             let source = Decoder::new(file).unwrap().repeat_infinite();
             sink.append(source);
+            sink.pause();
 
             self.state = MusicPlayerState::StopState;
             self.sink = Option::from(sink);
@@ -94,7 +91,7 @@ impl MusicPlayer {
             _ => {}
         }
     }
-    pub fn stop(&mut self) {
+    pub fn pause(&mut self) {
         match self.state {
             MusicPlayerState::PlayState => {
                 if let Some(s) = &self.sink {
@@ -120,6 +117,13 @@ impl MusicPlayerActor {
         }
     }
 
+    pub fn new_start_initialize(path:String) -> MusicPlayerActor {
+        let mut obj = MusicPlayerActor::new();
+        obj.start();
+        obj.initialize(path);
+        obj
+    }
+
     pub fn start(&mut self) {
         let (tx, rx) = mpsc::channel();
         self.tx = Option::from(tx);
@@ -132,17 +136,14 @@ impl MusicPlayerActor {
         }
     }
 
-    pub fn quit(&mut self) {
-        self.send_message(MusicPlayerMessage::Quit);
-    }
     pub fn initialize(&mut self, path: String) {
         self.send_message(MusicPlayerMessage::Initialize(path));
     }
     pub fn play(&mut self) {
         self.send_message(MusicPlayerMessage::Play);
     }
-    pub fn stop(&mut self) {
-        self.send_message(MusicPlayerMessage::Stop);
+    pub fn pause(&mut self) {
+        self.send_message(MusicPlayerMessage::Pause);
     }
 }
 
@@ -184,6 +185,7 @@ pub enum Message {
     TenMinute,
 }
 
+#[derive(PartialEq, Debug, Clone)]
 pub enum TickState {
     Stopped,
     Ticking,
@@ -198,6 +200,8 @@ struct GUI {
     reset_button_state: button::State,
     one_minute_button_state: button::State,
     ten_minute_button_state: button::State,
+    alert_player: MusicPlayerActor,
+    bgm_player: MusicPlayerActor,
 }
 
 impl Application for GUI {
@@ -214,6 +218,8 @@ impl Application for GUI {
             reset_button_state: button::State::new(),
             one_minute_button_state: button::State::new(),
             ten_minute_button_state: button::State::new(),
+            alert_player: MusicPlayerActor::new_start_initialize("media/alert.mp3".to_string()),
+            bgm_player: MusicPlayerActor::new_start_initialize("media/bgm.mp3".to_string()),
         },
         Command::none())
     }
@@ -226,10 +232,14 @@ impl Application for GUI {
         match message {
             Message::Start => {
                 self.tick_state = TickState::Ticking;
+                self.bgm_player.play();
+
                 self.last_update = Instant::now();
             }
             Message::Stop => {
                 self.tick_state = TickState::Stopped;
+                self.bgm_player.pause();
+                self.alert_player.pause();
 
                 let now_update = Instant::now();
                 let diff_duration = now_update - self.last_update;
@@ -242,6 +252,9 @@ impl Application for GUI {
             }
             Message::AlertStop => {
                 self.tick_state = TickState::Stopped;
+                self.bgm_player.pause();
+                self.alert_player.pause();
+
                 self.last_update = Instant::now();
             }
             Message::Reset => match self.tick_state {
@@ -264,16 +277,18 @@ impl Application for GUI {
                     self.last_update = now_update;
                     if is_time_out {
                         self.tick_state = TickState::Alert;
+                        self.bgm_player.pause();
+                        self.alert_player.play();
                     }
 
                 }
                 _ => {}
             }
             Message::OneMinute => {
-                self.total_duration += Duration::from_secs(1);
+                self.total_duration += Duration::from_secs(MINUTE);
             }
             Message::TenMinute => {
-                self.total_duration += Duration::from_secs(10);
+                self.total_duration += Duration::from_secs(10*MINUTE);
             }
         }
         Command::none()
@@ -361,22 +376,6 @@ impl Application for GUI {
 
 
 fn main() {
-    let mut player = MusicPlayerActor::new();
-    player.start();
-    player.initialize("alert.mp3".to_string());
-    player.play();
-    std::thread::sleep(Duration::from_secs(1));
-    player.stop();
-    std::thread::sleep(Duration::from_secs(1));
-    player.play();
-    std::thread::sleep(Duration::from_secs(1));
-    player.stop();
-    std::thread::sleep(Duration::from_secs(1));
-    player.play();
-    std::thread::sleep(Duration::from_secs(1));
-    player.stop();
-    std::thread::sleep(Duration::from_secs(1));
-
     let mut settings = Settings::default();
     settings.window.size = (400u32, 120u32);
     let _result = GUI::run(settings);
