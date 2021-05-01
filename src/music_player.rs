@@ -8,6 +8,7 @@ enum MusicPlayerMessage {
     Initialize(String),
     Play,
     Pause,
+    ChangeVolume(f32),
 }
 
 enum MusicPlayerState {
@@ -44,6 +45,9 @@ impl MusicPlayer {
                         }
                         MusicPlayerMessage::Pause => {
                             self.pause()
+                        }
+                        MusicPlayerMessage::ChangeVolume(volume) => {
+                            self.change_volume(volume)
                         }
                     }
                 }
@@ -88,6 +92,11 @@ impl MusicPlayer {
             _ => {}
         }
     }
+    pub fn change_volume(&mut self, volume:f32) {
+        if let Some(s) = &self.sink {
+            s.set_volume(volume)
+        }
+    }
 }
 
 pub struct MusicPlayerActor {
@@ -103,10 +112,11 @@ impl MusicPlayerActor {
         }
     }
 
-    pub fn new_start_initialize(path:String) -> MusicPlayerActor {
+    pub fn new_start_initialize(path:String, volume: f32) -> MusicPlayerActor {
         let mut obj = MusicPlayerActor::new();
         obj.start();
         obj.initialize(path);
+        obj.change_volume(volume);
         obj
     }
 
@@ -130,5 +140,8 @@ impl MusicPlayerActor {
     }
     pub fn pause(&mut self) {
         self.send_message(MusicPlayerMessage::Pause);
+    }
+    pub fn change_volume(&mut self, volume: f32) {
+        self.send_message(MusicPlayerMessage::ChangeVolume(volume));
     }
 }

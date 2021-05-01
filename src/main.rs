@@ -1,8 +1,9 @@
 #![windows_subsystem = "windows"]
 
+use iced::Slider;
 use std::time::Duration;
 use std::time::Instant;
-use iced::{button, executor, futures, Align, Application, Button, Column, Command, Clipboard, Element, Font, HorizontalAlignment, Length, Row, Settings, Subscription, Text};
+use iced::{button, executor, futures, slider, Align, Application, Button, Column, Command, Clipboard, Element, Font, HorizontalAlignment, Length, Row, Settings, Subscription, Text};
 mod music_player;
 use music_player::MusicPlayerActor;
 
@@ -52,6 +53,7 @@ pub enum Message {
     Update,
     OneMinute,
     TenMinute,
+    BGMVolumeChange(f32),
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -71,6 +73,8 @@ struct GUI {
     ten_minute_button_state: button::State,
     alert_player: MusicPlayerActor,
     bgm_player: MusicPlayerActor,
+    bgm_volume_state: slider::State,
+    bgm_volume_value: f32,
 }
 
 impl Application for GUI {
@@ -87,8 +91,10 @@ impl Application for GUI {
             reset_button_state: button::State::new(),
             one_minute_button_state: button::State::new(),
             ten_minute_button_state: button::State::new(),
-            alert_player: MusicPlayerActor::new_start_initialize("media/alert.mp3".to_string()),
-            bgm_player: MusicPlayerActor::new_start_initialize("media/bgm.mp3".to_string()),
+            alert_player: MusicPlayerActor::new_start_initialize("media/alert.mp3".to_string(), 1.0),
+            bgm_volume_value: 100.0,
+            bgm_player: MusicPlayerActor::new_start_initialize("media/bgm.mp3".to_string(), 1.0),
+            bgm_volume_state: slider::State::new(),
         },
         Command::none())
     }
@@ -159,6 +165,10 @@ impl Application for GUI {
             Message::TenMinute => {
                 self.total_duration += Duration::from_secs(10*MINUTE);
             }
+            Message::BGMVolumeChange(volume) => {
+                self.bgm_volume_value = volume;
+                self.bgm_player.change_volume(volume / 100.0);
+            }
         }
         Command::none()
     }
@@ -211,14 +221,16 @@ impl Application for GUI {
             .min_width(40)
             .on_press(Message::OneMinute);
 
-            let ten_minute_button = Button::new(
-                &mut self.ten_minute_button_state,
-                 Text::new("10m.")
-                    .horizontal_alignment(HorizontalAlignment::Center)
-                    .font(FONT)
-            )
-            .min_width(40)
-            .on_press(Message::TenMinute);
+        let ten_minute_button = Button::new(
+            &mut self.ten_minute_button_state,
+                Text::new("10m.")
+                .horizontal_alignment(HorizontalAlignment::Center)
+                .font(FONT)
+        )
+        .min_width(40)
+        .on_press(Message::TenMinute);
+
+        let bgm_volume_slider = Slider::new(&mut self.bgm_volume_state, 0.0..=100.0, self.bgm_volume_value, Message::BGMVolumeChange);
 
         Column::new()
             .push(tick_text)
@@ -230,6 +242,7 @@ impl Application for GUI {
                     .push(reset_button)
                     .spacing(10),
             )
+            .push(bgm_volume_slider)
             .spacing(10)
             .padding(10)
             .width(Length::Fill)
@@ -246,6 +259,6 @@ impl Application for GUI {
 
 fn main() {
     let mut settings = Settings::default();
-    settings.window.size = (400u32, 120u32);
+    settings.window.size = (400u32, 160u32);
     let _result = GUI::run(settings);
 }
